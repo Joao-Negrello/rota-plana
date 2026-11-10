@@ -1,0 +1,1492 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f8a4c">
+<meta name="description" content="Rotas com pouca subida no Bigorrilho e arredores, para patinete e corrida.">
+<title>Rota Plana</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛴</text></svg>">
+
+<style>
+/* =========================================================
+   TEMA (claro / escuro) — tudo em variáveis CSS
+   ========================================================= */
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #667085;
+  --card: #f3f5f7;
+  --card-sel: #e6f4ec;
+  --line: #e2e6eb;
+  --accent: #1f8a4c;
+  --accent-fg: #ffffff;
+  --shadow: 0 6px 24px rgba(0,0,0,.18);
+  --overlay: rgba(255,255,255,.94);
+  /* cores de inclinação (mesmas no mapa, gráfico e legenda) */
+  --g-flat: #22a55b;
+  --g-mid: #f0b72f;
+  --g-steep: #e5383b;
+  --g-down: #2f7fe0;
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  --bg: #16191d;
+  --fg: #eef1f4;
+  --muted: #9aa4b2;
+  --card: #21262c;
+  --card-sel: #1d3527;
+  --line: #2e353d;
+  --accent: #36c47b;
+  --accent-fg: #06210f;
+  --shadow: 0 6px 24px rgba(0,0,0,.5);
+  --overlay: rgba(28,32,37,.94);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font: 16px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* =========================================================
+   MAPA
+   ========================================================= */
+#map { position: fixed; inset: 0; background: var(--card); }
+/* Mapa de ruas escurecido no tema escuro (o satélite fica como está) */
+[data-theme="dark"] .tiles-ruas img { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88); }
+/* Tile que falhou nunca mostra ícone ou texto de erro */
+.leaflet-tile { color: transparent; }
+.leaflet-container { font: inherit; background: var(--card); }
+.leaflet-control-attribution {
+  font-size: 10px; background: var(--overlay) !important; color: var(--muted);
+  border-radius: 0 0 0 8px;
+}
+.leaflet-control-attribution a { color: var(--muted); }
+
+/* Botões flutuantes da direita */
+#fabs {
+  position: fixed; right: 12px; top: calc(28px + env(safe-area-inset-top));
+  display: flex; flex-direction: column; gap: 10px; z-index: 900;
+}
+.fab {
+  width: 46px; height: 46px; border-radius: 50%; border: 0;
+  background: var(--bg); box-shadow: var(--shadow);
+  font-size: 21px; display: grid; place-items: center;
+}
+.fab:active { transform: scale(.94); }
+.fab .badge {
+  position: absolute; transform: translate(14px,-14px);
+  background: var(--accent); color: var(--accent-fg);
+  font-size: 11px; font-weight: 700; min-width: 18px; height: 18px;
+  border-radius: 9px; display: grid; place-items: center; padding: 0 4px;
+}
+
+/* Canto superior esquerdo: Barigui + legenda */
+#topLeft {
+  position: fixed; left: 12px; top: calc(12px + env(safe-area-inset-top));
+  z-index: 900; display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
+}
+.pill {
+  border: 0; border-radius: 999px; padding: 10px 16px;
+  background: var(--bg); box-shadow: var(--shadow); font-weight: 600; font-size: 15px;
+}
+.pill:active { transform: scale(.96); }
+#legend {
+  background: var(--overlay); box-shadow: var(--shadow); border-radius: 10px;
+  padding: 6px 9px; font-size: 11.5px; display: grid; gap: 3px; color: var(--fg);
+}
+#legend span { display: flex; align-items: center; gap: 6px; }
+#legend i { width: 14px; height: 5px; border-radius: 3px; display: inline-block; }
+
+/* Seta de sentido e marcadores */
+.arrow-icon { width: 16px; height: 16px; display: grid; place-items: center; }
+.arrow-icon div {
+  width: 0; height: 0;
+  border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-bottom: 11px solid #fff;
+  filter: drop-shadow(0 0 1.5px rgba(0,0,0,.9));
+}
+.pin {
+  width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--accent); border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+.pin-end { background: #111; }
+.me-dot {
+  width: 16px; height: 16px; border-radius: 50%; background: #2f7fe0;
+  border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,127,224,.25);
+}
+.cursor-dot {
+  width: 14px; height: 14px; border-radius: 50%; background: var(--fg);
+  border: 3px solid var(--bg); box-shadow: 0 1px 4px rgba(0,0,0,.5);
+}
+
+/* =========================================================
+   AVISOS (toast) e indicador de "carregando"
+   ========================================================= */
+#toast {
+  position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top));
+  transform: translate(-50%, -140%); transition: transform .25s ease;
+  z-index: 1200; max-width: min(88vw, 420px);
+  background: var(--fg); color: var(--bg);
+  padding: 10px 16px; border-radius: 14px; font-size: 14.5px; text-align: center;
+  box-shadow: var(--shadow); pointer-events: none;
+}
+#toast.show { transform: translate(-50%, 0); }
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2.5px solid currentColor; border-right-color: transparent;
+  display: inline-block; vertical-align: -3px; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* =========================================================
+   PAINEL INFERIOR (bottom sheet)
+   ========================================================= */
+#sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; margin: 0 auto;
+  width: 100%; max-width: 560px; max-height: 80vh; max-height: 80dvh;
+  z-index: 1000; background: var(--bg);
+  border-radius: 20px 20px 0 0; box-shadow: 0 -4px 24px rgba(0,0,0,.18);
+  display: flex; flex-direction: column;
+  transform: translateY(var(--ty, 0px));
+  transition: transform .28s cubic-bezier(.2,.8,.2,1);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#sheet.dragging { transition: none; }
+#grab {
+  flex: none; height: 26px; display: grid; place-items: center;
+  touch-action: none; cursor: grab;
+}
+#grab::before { content: ""; width: 42px; height: 5px; border-radius: 3px; background: var(--line); }
+.view { overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 16px; }
+.hidden { display: none !important; }
+
+/* Controles: modo, distância, botão */
+.seg {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+  background: var(--card); border-radius: 14px; padding: 4px; gap: 4px;
+}
+.seg button {
+  border: 0; background: transparent; border-radius: 10px;
+  padding: 11px 6px; font-weight: 600; color: var(--muted); font-size: 15.5px;
+}
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.seg + .seg { margin-top: 10px; }
+.btn-main {
+  width: 100%; margin-top: 12px; border: 0; border-radius: 14px;
+  padding: 15px; font-size: 17px; font-weight: 700;
+  background: var(--accent); color: var(--accent-fg);
+}
+.btn-main:active { filter: brightness(.95); }
+.btn-main:disabled { opacity: .75; }
+
+/* Cabeçalho dos resultados */
+.rhead { display: flex; align-items: center; gap: 8px; min-height: 48px; }
+.icon-btn {
+  flex: none; width: 42px; height: 42px; border-radius: 50%; border: 0;
+  background: var(--card); font-size: 19px; display: grid; place-items: center;
+}
+.icon-btn:disabled { opacity: .35; }
+.rtitle { flex: 1; min-width: 0; }
+.rtitle b { display: block; font-size: 16px; }
+.rtitle small { display: block; color: var(--muted); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#profile { width: 100%; height: 96px; display: block; margin-top: 8px; touch-action: none; }
+.hint { text-align: center; color: var(--muted); font-size: 12.5px; margin: 6px 0 2px; }
+
+/* Cartões de rota */
+.cards { display: grid; gap: 10px; margin-top: 10px; }
+.card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--card); border-radius: 14px; padding: 12px;
+  border: 2px solid transparent; cursor: pointer;
+}
+.card.sel { border-color: var(--accent); background: var(--card-sel); }
+.rank {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800; color: #fff;
+}
+.lvl-ok { background: var(--g-flat); }
+.lvl-warn { background: var(--g-mid); color: #3a2b00; }
+.lvl-bad { background: var(--g-steep); }
+.cbody { flex: 1; min-width: 0; }
+.stats { font-size: 15px; }
+.stats b { font-size: 16.5px; }
+.verdict { font-size: 14px; color: var(--muted); margin-top: 2px; }
+.star { flex: none; border: 0; background: none; font-size: 24px; width: 40px; height: 40px; color: var(--muted); }
+.star.on { color: #f0b72f; }
+.del { flex: none; border: 0; background: none; font-size: 20px; width: 40px; height: 40px; color: var(--muted); }
+.empty { text-align: center; color: var(--muted); padding: 24px 8px; }
+
+/* Tela de falha geral (só se o mapa nem carregar) */
+#fatal {
+  position: fixed; inset: 0; z-index: 2000; background: var(--bg);
+  display: grid; place-items: center; text-align: center; padding: 24px;
+}
+#fatal p { font-size: 18px; margin: 0 0 16px; }
+</style>
+</head>
+<body>
+
+<!-- Mapa (ocupa a tela toda) -->
+<div id="map" aria-label="Mapa"></div>
+
+<!-- Atalho Barigui + legenda de cores -->
+<div id="topLeft">
+  <button class="pill" id="btnBarigui">🌳 Ir pro Barigui</button>
+  <div id="legend" aria-label="Legenda">
+    <span><i style="background:var(--g-flat)"></i>Plano</span>
+    <span><i style="background:var(--g-mid)"></i>Sobe leve</span>
+    <span><i style="background:var(--g-steep)"></i>Sobe forte</span>
+    <span><i style="background:var(--g-down)"></i>Desce</span>
+  </div>
+</div>
+
+<!-- Botões do mapa -->
+<div id="fabs">
+  <button class="fab" id="btnGps" title="Minha localização" aria-label="Minha localização">📍</button>
+  <button class="fab" id="btnLayer" title="Satélite" aria-label="Alternar satélite">🛰️</button>
+  <button class="fab" id="btnTheme" title="Tema" aria-label="Alternar tema">🌙</button>
+  <button class="fab" id="btnFavs" title="Favoritas" aria-label="Rotas favoritas">⭐<span class="badge hidden" id="favCount">0</span></button>
+</div>
+
+<!-- Aviso curto e amigável -->
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- Painel inferior -->
+<section id="sheet" aria-label="Painel">
+  <div id="grab" aria-hidden="true"></div>
+
+  <!-- VISTA 1: controles (máximo 3) -->
+  <div class="view" id="viewControls">
+    <div class="seg" id="segMode">
+      <button data-mode="patinete">🛴 Patinete</button>
+      <button data-mode="corrida">🏃 Corrida</button>
+    </div>
+    <div class="seg" id="segDist">
+      <button data-km="2">2 km</button>
+      <button data-km="3">3 km</button>
+      <button data-km="5">5 km</button>
+      <button data-km="8">8 km</button>
+    </div>
+    <button class="btn-main" id="btnSuggest">Sugerir rotas</button>
+    <div data-peek-end></div>
+  </div>
+
+  <!-- VISTA 2: resultados -->
+  <div class="view hidden" id="viewResults">
+    <div class="rhead">
+      <button class="icon-btn" id="btnBack" aria-label="Voltar">←</button>
+      <div class="rtitle"><b id="rTitle"></b><small id="rSub"></small></div>
+      <button class="icon-btn" id="btnPrev" aria-label="Rota anterior">‹</button>
+      <button class="icon-btn" id="btnNext" aria-label="Próxima rota">›</button>
+    </div>
+    <canvas id="profile" aria-label="Perfil de altura"></canvas>
+    <div class="hint" id="rHint"></div>
+    <div data-peek-end></div>
+    <div class="cards" id="cards"></div>
+  </div>
+
+  <!-- VISTA 3: favoritas -->
+  <div class="view hidden" id="viewFavs">
+    <div class="rhead">
+      <button class="icon-btn" id="btnFavBack" aria-label="Voltar">←</button>
+      <div class="rtitle"><b>Favoritas</b></div>
+    </div>
+    <div data-peek-end></div>
+    <div class="cards" id="favList"></div>
+  </div>
+</section>
+
+<script>
+/* =====================================================================
+   ROTA PLANA — rotas com pouca subida no Bigorrilho e arredores
+   ---------------------------------------------------------------------
+   Serviços gratuitos, sem chave de API:
+   - Mapa:     Leaflet + OpenStreetMap / Esri World Imagery
+   - Rotas:    OSRM público (routing.openstreetmap.de, perfis a pé e bike)
+   - Elevação: Open-Meteo Elevation API (até 100 pontos por chamada)
+   - Parque:   Overpass API (contorno do lago do Barigui)
+   Nenhuma mensagem técnica vai para a tela: erros viram avisos curtos.
+   ===================================================================== */
+(function () {
+'use strict';
+
+/* ---------------------------------------------------------------------
+   CONFIGURAÇÃO
+   --------------------------------------------------------------------- */
+const CFG = {
+  // Ponto inicial padrão: Praça da Ucrânia, Bigorrilho
+  START: { lat: -25.4368, lng: -49.2966 },
+  // Centro aproximado do Parque Barigui (usado para buscar o lago)
+  BARIGUI: { lat: -25.4225, lng: -49.3085 },
+  SAMPLE_M: 30,          // amostragem da rota para elevação (metros)
+  WARMUP_M: 1500,        // trecho de aquecimento da corrida
+  SCOOTER_MAX: 4,        // subida máxima "confortável" para o patinete (%)
+  ROUTERS: {
+    // perfil "bike" para patinete, "foot" para corrida; último é reserva
+    bike: ['https://routing.openstreetmap.de/routed-bike/route/v1/driving/',
+           'https://router.project-osrm.org/route/v1/driving/'],
+    foot: ['https://routing.openstreetmap.de/routed-foot/route/v1/driving/',
+           'https://router.project-osrm.org/route/v1/driving/']
+  },
+  ELEVATION: 'https://api.open-meteo.com/v1/elevation',
+  OVERPASS: ['https://overpass-api.de/api/interpreter',
+             'https://overpass.kumi.systems/api/interpreter'],
+  LEAFLET: [
+    { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+      css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' },
+    { js: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+      css: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css' },
+    { js: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+      css: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css' }
+  ],
+  COLORS: { flat: '#22a55b', mid: '#f0b72f', steep: '#e5383b', down: '#2f7fe0' }
+};
+
+/* ---------------------------------------------------------------------
+   ESTADO DO APP
+   --------------------------------------------------------------------- */
+const S = {
+  mode: 'patinete',      // 'patinete' | 'corrida'
+  km: 3,                 // distância desejada
+  start: { ...CFG.START },
+  routes: [],            // rotas exibidas na lista
+  sel: -1,               // índice da rota selecionada
+  view: 'controls',      // 'controls' | 'results' | 'favs'
+  sheet: 'peek',         // 'peek' | 'full'
+  busy: false,
+  layer: 'ruas',         // 'ruas' | 'satelite'
+  theme: 'light',
+  favs: []
+};
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+/* ---------------------------------------------------------------------
+   PROTEÇÃO CONTRA MENSAGENS TÉCNICAS
+   Qualquer erro não tratado vai só para o console, nunca para a tela.
+   --------------------------------------------------------------------- */
+window.addEventListener('error', (e) => {
+  if (e && e.message) console.warn('[app]', e.message);
+}, true);
+window.addEventListener('unhandledrejection', (e) => {
+  console.warn('[app] promessa rejeitada', e.reason);
+  e.preventDefault();
+});
+
+/* ---------------------------------------------------------------------
+   ARMAZENAMENTO LOCAL (sempre com try/catch: pode estar bloqueado)
+   --------------------------------------------------------------------- */
+const store = {
+  get(k, def) { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch { return def; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
+};
+
+/* ---------------------------------------------------------------------
+   AVISOS CURTOS (toast)
+   --------------------------------------------------------------------- */
+let toastTimer = null;
+function toast(msg, ms = 2600, spinner = false) {
+  const el = $('#toast');
+  el.innerHTML = (spinner ? '<span class="spinner"></span>&nbsp; ' : '') + escapeHtml(msg);
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  if (ms > 0) toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+function hideToast() { clearTimeout(toastTimer); $('#toast').classList.remove('show'); }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+/* ---------------------------------------------------------------------
+   FORMATAÇÃO (pt-BR)
+   --------------------------------------------------------------------- */
+const fmt1 = (n) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const fmtKm = (m) => fmt1(m / 1000) + ' km';
+const fmtPct = (g) => Math.round(Math.max(0, g)) + '%';
+/** "no km 1,2" — ou "logo no início" se for nos primeiros 200 m */
+const where = (m) => (m < 200 ? 'logo no início' : 'no km ' + fmt1(m / 1000));
+
+/* ---------------------------------------------------------------------
+   GEOMETRIA BÁSICA
+   --------------------------------------------------------------------- */
+const R_EARTH = 6371000;
+const rad = (d) => d * Math.PI / 180;
+const deg = (r) => r * 180 / Math.PI;
+
+/** distância em metros entre [lat,lng] a e b */
+function dist(a, b) {
+  const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * R_EARTH * Math.asin(Math.sqrt(h));
+}
+/** ponto a "m" metros de "p" na direção "brg" (graus, 0 = norte) */
+function offset(p, brg, m) {
+  const d = m / R_EARTH, b = rad(brg), la = rad(p[0]), lo = rad(p[1]);
+  const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+  const lo2 = lo + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+  return [deg(la2), deg(lo2)];
+}
+/** rumo de a para b (graus, 0 = norte, sentido horário) */
+function bearing(a, b) {
+  const la1 = rad(a[0]), la2 = rad(b[0]), dl = rad(b[1] - a[1]);
+  const y = Math.sin(dl) * Math.cos(la2);
+  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dl);
+  return (deg(Math.atan2(y, x)) + 360) % 360;
+}
+
+/** Reamostra uma linha a cada "step" metros. Retorna pontos e distância acumulada. */
+function resample(coords, step) {
+  const pts = [coords[0]], d = [0];
+  let acc = 0, carry = 0;
+  for (let i = 1; i < coords.length; i++) {
+    const a = coords[i - 1], b = coords[i];
+    const seg = dist(a, b);
+    if (seg === 0) continue;
+    let pos = step - carry;
+    while (pos <= seg) {
+      const t = pos / seg;
+      pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      d.push(acc + pos);
+      pos += step;
+    }
+    carry = seg - (pos - step);
+    acc += seg;
+  }
+  const last = coords[coords.length - 1];
+  if (acc - d[d.length - 1] > step * 0.3) { pts.push(last); d.push(acc); }
+  return { pts, d };
+}
+
+/* ---------------------------------------------------------------------
+   REDE: fetch com tempo limite e novas tentativas
+   --------------------------------------------------------------------- */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchJSON(url, { timeout = 15000, retries = 2, init = {} } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(t);
+      if (res.status === 429) { lastErr = new Error('limite'); await sleep(1500 * (attempt + 1)); continue; }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } catch (e) {
+      clearTimeout(t);
+      lastErr = e;
+      if (attempt < retries) await sleep(700 * 2 ** attempt);
+    }
+  }
+  throw lastErr || new Error('falha de rede');
+}
+
+/** Executa tarefas com concorrência limitada (para não sobrecarregar APIs públicas). */
+async function pool(items, n, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) {
+      const k = i++;
+      try { out[k] = await fn(items[k], k); } catch (e) { console.warn('[app]', e); out[k] = null; }
+    }
+  }));
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   ROTEAMENTO (OSRM)
+   waypoints: lista de [lat,lng]. Retorna lista de rotas {coords, distance}.
+   --------------------------------------------------------------------- */
+async function osrm(waypoints, profile, { alternatives = false } = {}) {
+  const coords = waypoints.map((p) => p[1].toFixed(6) + ',' + p[0].toFixed(6)).join(';');
+  const qs = '?overview=full&geometries=geojson&continue_straight=false' + (alternatives ? '&alternatives=3' : '');
+  let lastErr;
+  for (const base of CFG.ROUTERS[profile]) {
+    try {
+      const j = await fetchJSON(base + coords + qs, { retries: 1 });
+      if (j.code !== 'Ok' || !j.routes || !j.routes.length) throw new Error('sem rota');
+      return j.routes.map((r) => ({
+        coords: r.geometry.coordinates.map((c) => [c[1], c[0]]),
+        distance: r.distance
+      }));
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+/* ---------------------------------------------------------------------
+   ELEVAÇÃO (Open-Meteo) — com cache por coordenada (~10 m)
+   --------------------------------------------------------------------- */
+const elevCache = new Map();
+const ekey = (p) => p[0].toFixed(4) + ',' + p[1].toFixed(4);
+
+async function elevations(pts) {
+  const missing = [];
+  const seen = new Set();
+  for (const p of pts) {
+    const k = ekey(p);
+    if (!elevCache.has(k) && !seen.has(k)) { seen.add(k); missing.push(p); }
+  }
+  // Lotes de até 100 pontos por chamada
+  const batches = [];
+  for (let i = 0; i < missing.length; i += 100) batches.push(missing.slice(i, i + 100));
+  const results = await pool(batches, 2, async (b) => {
+    const lat = b.map((p) => p[0].toFixed(5)).join(',');
+    const lng = b.map((p) => p[1].toFixed(5)).join(',');
+    const j = await fetchJSON(`${CFG.ELEVATION}?latitude=${lat}&longitude=${lng}`, { retries: 3 });
+    if (!j || !Array.isArray(j.elevation) || j.elevation.length !== b.length) throw new Error('elevação inválida');
+    b.forEach((p, i) => elevCache.set(ekey(p), j.elevation[i]));
+    return true;
+  });
+  if (results.some((r) => !r)) throw new Error('elevação incompleta');
+  return pts.map((p) => elevCache.get(ekey(p)));
+}
+
+/* ---------------------------------------------------------------------
+   ANÁLISE DA ROTA: inclinação trecho a trecho, subida total, veredito
+   --------------------------------------------------------------------- */
+
+/** Monta o objeto de rota a partir dos pontos amostrados e elevações. */
+function buildRoute(pts, d, elev, kind) {
+  const n = pts.length;
+  // Suaviza a elevação (o modelo de terreno tem ~90 m de resolução,
+  // então valores ponto a ponto têm "degraus" falsos)
+  const s = elev.map((_, i) => {
+    let sum = 0, c = 0;
+    for (let k = Math.max(0, i - 1); k <= Math.min(n - 1, i + 1); k++) { sum += elev[k]; c++; }
+    return sum / c;
+  });
+  // Inclinação de cada trecho i→i+1 (janela centrada de ~90 m)
+  const g = [];
+  for (let i = 0; i < n - 1; i++) {
+    const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 2);
+    const dd = d[b] - d[a];
+    g.push(dd > 0 ? (s[b] - s[a]) / dd * 100 : 0);
+  }
+  return { pts, d, elev, s, g, kind, a: analyze(pts, d, s, g) };
+}
+
+function analyze(pts, d, s, g) {
+  const total = d[d.length - 1];
+  let climb = 0, maxUp = -99, maxUpAt = 0, warmClimb = 0, warmMax = -99, warmMaxAt = 0, over4 = 0;
+  for (let i = 0; i < g.length; i++) {
+    const up = s[i + 1] - s[i];
+    const segLen = d[i + 1] - d[i];
+    if (up > 0) climb += up;
+    if (g[i] > maxUp) { maxUp = g[i]; maxUpAt = d[i]; }
+    if (g[i] > CFG.SCOOTER_MAX) over4 += segLen;
+    if (d[i] < CFG.WARMUP_M) {
+      if (up > 0) warmClimb += up;
+      if (g[i] > warmMax) { warmMax = g[i]; warmMaxAt = d[i]; }
+    }
+  }
+  // Trechos repetidos (ida e volta pela mesma rua): grade de ~25 m
+  const seen = new Map();
+  let rep = 0;
+  pts.forEach((p, i) => {
+    const k = Math.round(p[0] / 0.00022) + ':' + Math.round(p[1] / 0.00025);
+    if (seen.has(k) && i - seen.get(k) > 8) rep++;
+    if (!seen.has(k)) seen.set(k, i);
+  });
+  return {
+    total, climb, maxUp: Math.max(0, maxUp), maxUpAt,
+    warmClimb, warmMax: Math.max(0, warmMax), warmMaxAt,
+    over4, repeat: rep / pts.length
+  };
+}
+
+/** Rota no sentido contrário (para loops a pé: escolhe o melhor sentido). */
+function reverseRoute(r) {
+  const pts = r.pts.slice().reverse();
+  const total = r.d[r.d.length - 1];
+  const d = r.d.map((x) => total - x).reverse();
+  return buildRoute(pts, d, r.elev.slice().reverse(), r.kind);
+}
+
+/** Pontuação: quanto menor, mais plana/adequada. */
+function score(r, mode, targetM) {
+  const a = r.a;
+  const dev = targetM ? Math.abs(a.total - targetM) / targetM * 40 : 0;
+  if (mode === 'corrida' && r.kind === 'loop') {
+    // Corrida: o que mais pesa é subida no aquecimento; depois repetição
+    return a.warmClimb * 4 + Math.max(0, a.warmMax - 3) * 25 + a.climb * 0.4 + a.repeat * 80 + dev;
+  }
+  // Patinete (e trajetos até o parque): evitar subidas acima de ~4%
+  return a.climb + Math.max(0, a.maxUp - CFG.SCOOTER_MAX) * 30 + a.over4 * 0.05 + dev;
+}
+
+/** Veredito em linguagem simples. lvl: ok | warn | bad */
+function verdict(r, mode) {
+  // Compara com os valores arredondados que aparecem no cartão
+  const a = { ...r.a, maxUp: Math.round(r.a.maxUp), warmMax: Math.round(r.a.warmMax) };
+  if (mode === 'corrida' && r.kind === 'loop') {
+    let v;
+    if (a.warmMax <= 3 && a.warmClimb <= 8) {
+      v = { lvl: 'ok', txt: a.maxUp > 5 ? 'Começo plano · sobe ' + where(a.maxUpAt) : 'Começo plano, ótimo pra aquecer' };
+    } else if (a.warmMax <= 5) {
+      v = { lvl: 'warn', txt: 'Sobe um pouco ' + where(a.warmMaxAt) };
+    } else {
+      v = { lvl: 'bad', txt: 'Subida forte ' + where(a.warmMaxAt) + ' — aquecimento pesado' };
+    }
+    if (a.repeat > 0.3 && v.lvl === 'ok') v.txt += ' · repete ruas';
+    return v;
+  }
+  if (mode === 'corrida') {
+    if (a.maxUp <= 3) return { lvl: 'ok', txt: 'Quase toda plana' };
+    if (a.maxUp <= 6) return { lvl: 'warn', txt: 'Subida leve ' + where(a.maxUpAt) };
+    return { lvl: 'bad', txt: 'Subida forte ' + where(a.maxUpAt) };
+  }
+  if (a.maxUp <= CFG.SCOOTER_MAX) return { lvl: 'ok', txt: 'Boa para patinete' };
+  if (a.maxUp <= 6) return { lvl: 'warn', txt: 'Subida média ' + where(a.maxUpAt) + ' — vá devagar' };
+  return { lvl: 'bad', txt: 'Tem uma subida forte ' + where(a.maxUpAt) + ' — evite' };
+}
+
+/** Cor do trecho conforme a inclinação */
+function gradeColor(g) {
+  if (g < -2) return CFG.COLORS.down;
+  if (g < 2) return CFG.COLORS.flat;
+  if (g <= 5) return CFG.COLORS.mid;
+  return CFG.COLORS.steep;
+}
+
+/** Transforma geometria OSRM em rota analisada (amostra + elevação). */
+async function toRoute(coords, kind) {
+  const { pts, d } = resample(coords, CFG.SAMPLE_M);
+  if (pts.length < 3) throw new Error('rota curta');
+  const elev = await elevations(pts);
+  return buildRoute(pts, d, elev, kind);
+}
+
+/** Remove rotas quase iguais (mais de 75% dos pontos em comum). */
+function dedupe(list) {
+  const cell = (p) => Math.round(p[0] / 0.0003) + ':' + Math.round(p[1] / 0.0003);
+  const out = [];
+  for (const c of list) {
+    const set = new Set(c.coords.map(cell));
+    const dup = out.some((o) => {
+      let common = 0;
+      for (const k of o.cells) if (set.has(k)) common++;
+      return common / Math.max(o.cells.size, set.size) > 0.75;
+    });
+    if (!dup) out.push({ ...c, cells: set });
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   GERAÇÃO DE LOOPS (saída e chegada no mesmo ponto)
+   Ideia: desenhar um círculo que passa pela partida, em 6 direções
+   diferentes, e pedir ao OSRM a rota que passa por 3 pontos dele.
+   --------------------------------------------------------------------- */
+function loopWaypoints(start, radius, brg, clockwise) {
+  const center = offset(start, brg, radius);
+  const back = (brg + 180) % 360;               // ângulo da partida visto do centro
+  const steps = clockwise ? [90, 180, 270] : [270, 180, 90];
+  return [start, ...steps.map((s) => offset(center, (back + s) % 360, radius)), start];
+}
+
+async function suggestLoops() {
+  const target = S.km * 1000;
+  const profile = S.mode === 'patinete' ? 'bike' : 'foot';
+  const start = [S.start.lat, S.start.lng];
+  const r0 = target / (2 * Math.PI * 1.3);       // 1,3 = ruas não são retas
+  const jitter = Math.random() * 30;
+  const specs = [0, 60, 120, 180, 240, 300].map((b, i) => ({ brg: (b + jitter) % 360, cw: i % 2 === 0 }));
+
+  setBusy(true, 'Procurando ruas…');
+  // 1) rotas pelas ruas, com um ajuste de raio se a distância sair muito do alvo
+  const raw = await pool(specs, 2, async (sp) => {
+    let r = r0, best = null;
+    for (let tryN = 0; tryN < 2; tryN++) {
+      const [route] = await osrm(loopWaypoints(start, r, sp.brg, sp.cw), profile);
+      const ratio = route.distance / target;
+      if (!best || Math.abs(1 - ratio) < Math.abs(1 - best.distance / target)) best = route;
+      if (ratio > 0.82 && ratio < 1.2) break;
+      r = r * (1 / ratio);
+    }
+    return best;
+  });
+  const found = dedupe(raw.filter((x) => x && x.distance > target * 0.6 && x.distance < target * 1.5));
+  if (!found.length) throw new Error('nenhuma rota');
+
+  // 2) elevação e análise
+  setBusy(true, 'Medindo as subidas…');
+  const analyzed = (await pool(found, 2, (c) => toRoute(c.coords, 'loop'))).filter(Boolean);
+  if (!analyzed.length) throw new Error('sem elevação');
+
+  // 3) corrida a pé: o loop pode ser feito no sentido inverso, escolhe o melhor
+  const final = analyzed.map((r) => {
+    if (profile !== 'foot') return r;
+    const rev = reverseRoute(r);
+    return score(rev, S.mode, target) < score(r, S.mode, target) ? rev : r;
+  });
+
+  final.forEach((r) => { r.mode = S.mode; r.score = score(r, S.mode, target); });
+  final.sort((a, b) => a.score - b.score);
+  return final.slice(0, 5);
+}
+
+/* ---------------------------------------------------------------------
+   PARQUE BARIGUI: contorno do parque e do lago via Overpass
+   --------------------------------------------------------------------- */
+let parkCache = null;
+
+async function getParkData() {
+  if (parkCache) return parkCache;
+  const c = CFG.BARIGUI;
+  const q = `[out:json][timeout:20];(
+    way["leisure"="park"]["name"~"Barigui",i](around:2000,${c.lat},${c.lng});
+    relation["leisure"="park"]["name"~"Barigui",i](around:2000,${c.lat},${c.lng});
+    way["natural"="water"](around:900,${c.lat},${c.lng});
+    relation["natural"="water"](around:900,${c.lat},${c.lng});
+  );out geom;`;
+  let data = null;
+  for (const url of CFG.OVERPASS) {
+    try {
+      data = await fetchJSON(url, { retries: 1, timeout: 25000, init: { method: 'POST', body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } } });
+      break;
+    } catch (e) { console.warn('[app] overpass', e); }
+  }
+  const ringOf = (el) => {
+    if (el.geometry) return el.geometry.map((g) => [g.lat, g.lon]);
+    if (el.members) return el.members.filter((m) => m.role !== 'inner' && m.geometry).flatMap((m) => m.geometry.map((g) => [g.lat, g.lon]));
+    return [];
+  };
+  const areaOf = (ring) => { // área aproximada (m²) pela fórmula do laço
+    let a = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const p = ring[i], q2 = ring[(i + 1) % ring.length];
+      a += (p[1] * 111320 * Math.cos(rad(p[0]))) * (q2[0] * 110540) - (q2[1] * 111320 * Math.cos(rad(q2[0]))) * (p[0] * 110540);
+    }
+    return Math.abs(a / 2);
+  };
+  let park = [], lake = null;
+  if (data && data.elements) {
+    for (const el of data.elements) {
+      const t = el.tags || {};
+      const ring = ringOf(el);
+      if (ring.length < 4) continue;
+      if (t.leisure === 'park') park = park.concat(ring);
+      else if (t.natural === 'water' && !/river|stream|canal/.test(t.water || '')) {
+        const area = areaOf(ring);
+        if (!lake || area > lake.area) lake = { ring, area };
+      }
+    }
+  }
+  parkCache = { park, lake: lake ? lake.ring : null };
+  return parkCache;
+}
+
+/** Ponto do parque mais próximo da partida (entrada provável). */
+function parkEntry(park, start) {
+  if (!park.length) return offset([CFG.BARIGUI.lat, CFG.BARIGUI.lng], bearing([CFG.BARIGUI.lat, CFG.BARIGUI.lng], start), 350);
+  let best = park[0], bd = Infinity;
+  for (const p of park) { const dd = dist(p, start); if (dd < bd) { bd = dd; best = p; } }
+  return best;
+}
+
+/** Waypoints em volta do lago, um pouco para fora d'água (onde fica a pista). */
+function lakeWaypoints(lake, entry) {
+  let ring = lake;
+  if (!ring || ring.length < 4) {
+    // reserva: círculo em volta do centro do parque
+    ring = Array.from({ length: 24 }, (_, i) => offset([CFG.BARIGUI.lat, CFG.BARIGUI.lng], i * 15, 280));
+  }
+  const c = [ring.reduce((s, p) => s + p[0], 0) / ring.length, ring.reduce((s, p) => s + p[1], 0) / ring.length];
+  const pick = [];
+  for (let k = 0; k < 6; k++) {
+    const target = k * 60;
+    let best = ring[0], bd = 999;
+    for (const p of ring) {
+      const diff = Math.abs(((bearing(c, p) - target + 540) % 360) - 180);
+      if (diff < bd) { bd = diff; best = p; }
+    }
+    pick.push(offset(best, bearing(c, best), 30));
+  }
+  // começa pelo ponto mais próximo da entrada
+  let i0 = 0, bd = Infinity;
+  pick.forEach((p, i) => { const dd = dist(p, entry); if (dd < bd) { bd = dd; i0 = i; } });
+  const ordered = pick.slice(i0).concat(pick.slice(0, i0));
+  return [entry, ...ordered, entry];
+}
+
+async function suggestBarigui() {
+  const profile = S.mode === 'patinete' ? 'bike' : 'foot';
+  const start = [S.start.lat, S.start.lng];
+  setBusy(true, 'Procurando o caminho…');
+  const { park, lake } = await getParkData();
+  const entry = parkEntry(park, start);
+  if (dist(start, entry) < 150) {
+    toast('Você já está no parque 🌳');
+  }
+
+  // Alternativas: rota direta + desvios por pontos laterais
+  const direct = dist(start, entry);
+  const mid = [(start[0] + entry[0]) / 2, (start[1] + entry[1]) / 2];
+  const brg = bearing(start, entry);
+  const jobs = [
+    () => osrm([start, entry], profile, { alternatives: true }),
+    () => osrm([start, offset(mid, brg + 90, direct * 0.22), entry], profile),
+    () => osrm([start, offset(mid, brg - 90, direct * 0.22), entry], profile)
+  ];
+  const raw = (await pool(jobs, 2, (job) => job())).filter(Boolean).flat();
+  const found = dedupe(raw.filter((r) => r.distance < direct * 2.2 + 400));
+  if (!found.length) throw new Error('nenhuma rota');
+
+  setBusy(true, 'Medindo as subidas…');
+  const list = (await pool(found, 2, (c) => toRoute(c.coords, 'dest'))).filter(Boolean);
+  if (!list.length) throw new Error('sem elevação');
+  list.forEach((r) => { r.mode = S.mode; r.score = score(r, S.mode, 0); r.label = 'Até o Barigui'; });
+  list.sort((a, b) => a.score - b.score);
+  const top = list.slice(0, 4);
+
+  // Volta no lago: calculada em seguida e adicionada como último cartão
+  const arrival = top[0].pts[top[0].pts.length - 1];
+  lakeLoop(lake, arrival, profile).then((r) => {
+    if (r && S.view === 'results' && S.routes === top) {
+      top.push(r);
+      renderCards();
+      toast('Volta no lago adicionada 🔁');
+    }
+  }).catch((e) => console.warn('[app] lago', e));
+
+  return top;
+}
+
+async function lakeLoop(lake, arrival, profile) {
+  const wps = lakeWaypoints(lake, arrival);
+  let route;
+  try { [route] = await osrm(wps, profile); }
+  catch { [route] = await osrm(wps, 'foot'); }      // trilha pode não aceitar bike
+  const r = await toRoute(route.coords, 'lake');
+  r.mode = S.mode; r.label = 'Volta no lago'; r.score = 0;
+  return r;
+}
+
+/* =====================================================================
+   MAPA (Leaflet)
+   ===================================================================== */
+let map, tileRuas, tileSat, startMarker, meMarker, cursorMarker;
+let routeLayer, ghostLayer;
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+
+/** Camada de tiles que nunca mostra erro: tenta de novo em silêncio. */
+function safeTileLayer(url, opts) {
+  const layer = L.tileLayer(url, { ...opts, errorTileUrl: BLANK, crossOrigin: false });
+  let errCount = 0, warned = 0;
+  layer.on('tileerror', (e) => {
+    const img = e.tile, coords = e.coords;
+    const n = +(img.dataset.retry || 0);
+    errCount++;
+    if (errCount >= 4 && Date.now() - warned > 15000) {
+      warned = Date.now();
+      toast('Mapa carregando devagar… tentando de novo', 3000);
+    }
+    if (n < 3) {
+      img.dataset.retry = n + 1;
+      setTimeout(() => { if (img.isConnected) img.src = layer.getTileUrl(coords); }, 1500 * (n + 1));
+    }
+  });
+  layer.on('tileload', (e) => { delete e.tile.dataset.retry; });
+  return layer;
+}
+
+function initMap() {
+  map = L.map('map', { zoomControl: false, attributionControl: true, tap: true })
+    .setView([S.start.lat, S.start.lng], 15);
+  map.attributionControl.setPrefix(false);
+  map.attributionControl.setPosition('topright');
+
+  tileRuas = safeTileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, className: 'tiles-ruas',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+  });
+  tileSat = safeTileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19, maxNativeZoom: 18, attribution: 'Imagens © Esri'
+  });
+  (S.layer === 'satelite' ? tileSat : tileRuas).addTo(map);
+  updateLayerBtn();
+
+  ghostLayer = L.layerGroup().addTo(map);
+  routeLayer = L.layerGroup().addTo(map);
+
+  startMarker = L.marker([S.start.lat, S.start.lng], {
+    draggable: true, zIndexOffset: 1000,
+    icon: L.divIcon({ className: '', html: '<div class="pin"></div>', iconSize: [30, 30], iconAnchor: [15, 34] })
+  }).addTo(map);
+  startMarker.on('dragend', () => {
+    if (S.view !== 'controls') { startMarker.setLatLng([S.start.lat, S.start.lng]); toast('Volte (←) para mudar a partida'); return; }
+    const p = startMarker.getLatLng();
+    S.start = { lat: p.lat, lng: p.lng };
+    toast('Partida definida aqui 📌', 1500);
+  });
+
+  // Tocar no mapa define a partida (apenas na tela de controles)
+  map.on('click', (e) => {
+    if (S.busy) return;
+    if (S.view !== 'controls') { if (S.sheet === 'full') setSheet('peek'); return; }
+    setStart(e.latlng.lat, e.latlng.lng);
+    toast('Partida definida aqui 📌', 1500);
+  });
+}
+
+function setStart(lat, lng) {
+  S.start = { lat, lng };
+  startMarker.setLatLng([lat, lng]);
+}
+
+function updateLayerBtn() {
+  const b = $('#btnLayer');
+  b.textContent = S.layer === 'satelite' ? '🗺️' : '🛰️';
+  b.title = S.layer === 'satelite' ? 'Mapa' : 'Satélite';
+}
+
+/** Desenha a rota selecionada, pintada por inclinação, com setas de sentido. */
+function drawRoutes() {
+  routeLayer.clearLayers();
+  ghostLayer.clearLayers();
+  cursorMarker = null;
+  const r = S.routes[S.sel];
+  if (!r) return;
+
+  // Outras opções em cinza (tocar seleciona)
+  S.routes.forEach((o, i) => {
+    if (i === S.sel) return;
+    L.polyline(o.pts, { color: '#7a8592', weight: 5, opacity: .55 })
+      .on('click', (ev) => { L.DomEvent.stop(ev); select(i); })
+      .addTo(ghostLayer);
+  });
+
+  // Contorno para dar contraste sobre qualquer fundo
+  L.polyline(r.pts, { color: S.theme === 'dark' ? '#000' : '#fff', weight: 10, opacity: .9, interactive: false }).addTo(routeLayer);
+
+  // Trechos agrupados por cor
+  let curColor = null, cur = [];
+  const flush = () => { if (cur.length > 1) L.polyline(cur, { color: curColor, weight: 6, opacity: 1, interactive: false, lineCap: 'round' }).addTo(routeLayer); };
+  for (let i = 0; i < r.g.length; i++) {
+    const c = gradeColor(r.g[i]);
+    if (c !== curColor) { flush(); curColor = c; cur = [r.pts[i]]; }
+    cur.push(r.pts[i + 1]);
+  }
+  flush();
+
+  // Setas a cada ~350 m indicando o sentido
+  const step = Math.max(250, Math.min(500, r.a.total / 10));
+  let next = step * 0.6;
+  for (let i = 0; i < r.pts.length - 1; i++) {
+    if (r.d[i] >= next) {
+      const b = bearing(r.pts[i], r.pts[Math.min(r.pts.length - 1, i + 2)]);
+      L.marker(r.pts[i], {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'arrow-icon', html: `<div style="transform:rotate(${b}deg)"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] })
+      }).addTo(routeLayer);
+      next += step;
+    }
+  }
+
+  // Marcador de chegada (quando não é loop)
+  if (r.kind === 'dest') {
+    L.marker(r.pts[r.pts.length - 1], {
+      interactive: false,
+      icon: L.divIcon({ className: '', html: '<div class="pin pin-end"></div>', iconSize: [30, 30], iconAnchor: [15, 34] })
+    }).addTo(routeLayer);
+  }
+  fitRoute(r);
+}
+
+/** Enquadra a rota deixando espaço para o painel inferior. */
+function fitRoute(r) {
+  const sheetVisible = sheetVisibleHeight();
+  map.fitBounds(L.latLngBounds(r.pts), {
+    paddingTopLeft: [60, 70],
+    paddingBottomRight: [64, sheetVisible + 20],
+    maxZoom: 17, animate: true
+  });
+}
+
+/** Ponto no mapa acompanhando o dedo no gráfico de elevação. */
+function showCursor(i) {
+  const r = S.routes[S.sel];
+  if (!r) return;
+  const p = r.pts[i];
+  if (!cursorMarker) {
+    cursorMarker = L.marker(p, { interactive: false, zIndexOffset: 2000, icon: L.divIcon({ className: '', html: '<div class="cursor-dot"></div>', iconSize: [14, 14], iconAnchor: [7, 7] }) }).addTo(routeLayer);
+  } else cursorMarker.setLatLng(p);
+}
+
+/* =====================================================================
+   PERFIL DE ELEVAÇÃO (canvas)
+   ===================================================================== */
+let profileCursor = -1;
+
+function drawProfile() {
+  const cv = $('#profile');
+  const r = S.routes[S.sel];
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (!w) return;
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (!r) return;
+
+  const css = getComputedStyle(document.documentElement);
+  const fg = css.getPropertyValue('--fg').trim();
+  const muted = css.getPropertyValue('--muted').trim();
+  const padL = 40, padR = 6, padT = 8, padB = 18;
+  const total = r.d[r.d.length - 1];
+  let lo = Math.min(...r.s), hi = Math.max(...r.s);
+  // Escala mínima de 20 m para rota plana não parecer montanha
+  if (hi - lo < 20) { const m = (hi + lo) / 2; lo = m - 10; hi = m + 10; }
+  const X = (d) => padL + (d / total) * (w - padL - padR);
+  const Y = (e) => padT + (1 - (e - lo) / (hi - lo)) * (h - padT - padB);
+  const base = h - padB;
+
+  // Área preenchida colorida por inclinação (destaca onde estão as subidas)
+  for (let i = 0; i < r.g.length; i++) {
+    ctx.fillStyle = gradeColor(r.g[i]);
+    ctx.globalAlpha = .85;
+    ctx.beginPath();
+    ctx.moveTo(X(r.d[i]), base);
+    ctx.lineTo(X(r.d[i]), Y(r.s[i]));
+    ctx.lineTo(X(r.d[i + 1]) + 0.5, Y(r.s[i + 1]));
+    ctx.lineTo(X(r.d[i + 1]) + 0.5, base);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // Linha do relevo
+  ctx.strokeStyle = fg; ctx.lineWidth = 1.5; ctx.beginPath();
+  r.s.forEach((e, i) => (i ? ctx.lineTo(X(r.d[i]), Y(e)) : ctx.moveTo(X(r.d[i]), Y(e))));
+  ctx.stroke();
+
+  // Rótulos: altura mín/máx e quilômetros
+  ctx.fillStyle = muted; ctx.font = '11px system-ui, sans-serif';
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  ctx.fillText(Math.round(Math.max(...r.s)) + ' m', padL - 5, padT - 2);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(Math.round(Math.min(...r.s)) + ' m', padL - 5, base);
+  ctx.textBaseline = 'top';
+  const kmStep = total > 5000 ? 2000 : 1000;
+  for (let k = 0; k <= total; k += kmStep) {
+    ctx.textAlign = k === 0 ? 'left' : 'center';
+    ctx.fillText(k / 1000 + ' km', X(k), base + 3);
+  }
+
+  // Cursor (dedo no gráfico)
+  if (profileCursor >= 0 && profileCursor < r.pts.length) {
+    const x = X(r.d[profileCursor]);
+    ctx.strokeStyle = fg; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, base); ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+function initProfileTouch() {
+  const cv = $('#profile');
+  const pick = (ev) => {
+    const r = S.routes[S.sel];
+    if (!r) return;
+    const rect = cv.getBoundingClientRect();
+    const t = Math.min(1, Math.max(0, (ev.clientX - rect.left - 40) / (rect.width - 46)));
+    const target = t * r.d[r.d.length - 1];
+    let i = 0;
+    while (i < r.d.length - 1 && r.d[i] < target) i++;
+    profileCursor = i;
+    drawProfile();
+    showCursor(i);
+    const g = r.g[Math.min(i, r.g.length - 1)];
+    $('#rHint').textContent = `km ${fmt1(r.d[i] / 1000)} · ${Math.round(r.s[i])} m · ${g >= 0 ? 'sobe' : 'desce'} ${Math.abs(Math.round(g))}%`;
+  };
+  cv.addEventListener('pointerdown', (e) => { cv.setPointerCapture(e.pointerId); pick(e); });
+  cv.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') pick(e); });
+}
+
+/* =====================================================================
+   PAINEL INFERIOR (bottom sheet): "peek" (só o essencial) e "full"
+   ===================================================================== */
+const sheet = $('#sheet');
+
+function currentView() { return $('#view' + S.view[0].toUpperCase() + S.view.slice(1)); }
+
+/** Altura do painel quando recolhido: até o marcador [data-peek-end] da vista. */
+function peekHeight() {
+  const v = currentView();
+  const end = v.querySelector('[data-peek-end]');
+  const grab = $('#grab').offsetHeight;
+  return grab + (end ? end.offsetTop - v.offsetTop + 12 : v.scrollHeight) + (parseFloat(getComputedStyle(sheet).paddingBottom) || 0);
+}
+function sheetVisibleHeight() { return S.sheet === 'full' ? sheet.offsetHeight : Math.min(sheet.offsetHeight, peekHeight()); }
+
+function setSheet(state) {
+  S.sheet = state;
+  const ty = state === 'full' ? 0 : Math.max(0, sheet.offsetHeight - peekHeight());
+  sheet.style.setProperty('--ty', ty + 'px');
+  if (state === 'peek') currentView().scrollTop = 0;
+}
+
+function initSheetDrag() {
+  const grab = $('#grab');
+  let y0 = null, ty0 = 0, t0 = 0, moved = false;
+  const curTy = () => parseFloat(sheet.style.getPropertyValue('--ty')) || 0;
+  const down = (e) => { y0 = e.clientY; ty0 = curTy(); t0 = Date.now(); moved = false; sheet.classList.add('dragging'); grab.setPointerCapture(e.pointerId); };
+  const move = (e) => {
+    if (y0 == null) return;
+    const dy = e.clientY - y0;
+    if (Math.abs(dy) > 4) moved = true;
+    const maxTy = Math.max(0, sheet.offsetHeight - peekHeight());
+    sheet.style.setProperty('--ty', Math.min(maxTy + 40, Math.max(0, ty0 + dy)) + 'px');
+  };
+  const up = (e) => {
+    if (y0 == null) return;
+    sheet.classList.remove('dragging');
+    const dy = e.clientY - y0, v = dy / Math.max(1, Date.now() - t0);
+    y0 = null;
+    if (!moved) { setSheet(S.sheet === 'full' ? 'peek' : 'full'); return; }   // toque = alterna
+    if (v < -0.4 || dy < -50) setSheet('full');
+    else if (v > 0.4 || dy > 50) setSheet('peek');
+    else setSheet(S.sheet);
+  };
+  grab.addEventListener('pointerdown', down);
+  grab.addEventListener('pointermove', move);
+  grab.addEventListener('pointerup', up);
+  grab.addEventListener('pointercancel', up);
+  window.addEventListener('resize', () => { setSheet(S.sheet); drawProfile(); });
+  // Conteúdo mudou de tamanho (cartões entraram/saíram): reposiciona o painel
+  if ('ResizeObserver' in window) {
+    let raf = 0;
+    new ResizeObserver(() => {
+      if (sheet.classList.contains('dragging')) return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setSheet(S.sheet));
+    }).observe(sheet);
+  }
+}
+
+function showView(v, sheetState = 'peek') {
+  S.view = v;
+  ['controls', 'results', 'favs'].forEach((n) => $('#view' + n[0].toUpperCase() + n.slice(1)).classList.toggle('hidden', n !== v));
+  startMarker.dragging && (v === 'controls' ? startMarker.dragging.enable() : startMarker.dragging.disable());
+  requestAnimationFrame(() => setSheet(sheetState));
+}
+
+/* =====================================================================
+   RESULTADOS: cabeçalho, cartões, seleção
+   ===================================================================== */
+function routeName(r, i) {
+  if (r.label) return r.label;
+  return 'Rota ' + (i + 1);
+}
+
+function statsHtml(r) {
+  return `<b>${fmtKm(r.a.total)}</b> · ↑ ${Math.round(r.a.climb)} m · máx ${fmtPct(r.a.maxUp)}`;
+}
+
+function renderHeader() {
+  const r = S.routes[S.sel];
+  if (!r) return;
+  const v = verdict(r, r.mode);
+  $('#rTitle').textContent = `${routeName(r, S.sel)} · ${fmtKm(r.a.total)}`;
+  $('#rSub').textContent = v.txt;
+  $('#btnPrev').disabled = S.sel <= 0;
+  $('#btnNext').disabled = S.sel >= S.routes.length - 1;
+  $('#btnPrev').classList.toggle('hidden', S.routes.length < 2);
+  $('#btnNext').classList.toggle('hidden', S.routes.length < 2);
+  $('#rHint').textContent = S.routes.length > 1 ? `↑ puxe para ver as ${S.routes.length} opções` : 'Toque no gráfico para ver o ponto no mapa';
+}
+
+function renderCards() {
+  const box = $('#cards');
+  box.innerHTML = '';
+  S.routes.forEach((r, i) => {
+    const v = verdict(r, r.mode);
+    const fav = isFav(r);
+    const el = document.createElement('div');
+    el.className = 'card' + (i === S.sel ? ' sel' : '');
+    el.innerHTML = `
+      <div class="rank lvl-${v.lvl}">${r.kind === 'lake' ? '🔁' : i + 1}</div>
+      <div class="cbody">
+        <div class="stats">${statsHtml(r)}</div>
+        <div class="verdict">${escapeHtml((r.label && r.kind === 'lake' ? r.label + ' · ' : '') + v.txt)}</div>
+      </div>
+      <button class="star${fav ? ' on' : ''}" aria-label="Favoritar">${fav ? '★' : '☆'}</button>`;
+    el.addEventListener('click', () => { select(i); setSheet('peek'); });
+    el.querySelector('.star').addEventListener('click', (e) => { e.stopPropagation(); toggleFav(r); renderCards(); });
+    box.appendChild(el);
+  });
+  renderHeader();
+  requestAnimationFrame(() => setSheet(S.sheet));
+}
+
+function select(i) {
+  if (i < 0 || i >= S.routes.length) return;
+  S.sel = i;
+  profileCursor = -1;
+  renderCards();
+  drawRoutes();
+  drawProfile();
+}
+
+function showResults(routes) {
+  S.routes = routes;
+  S.sel = 0;
+  showView('results', 'peek');
+  requestAnimationFrame(() => { select(0); });
+}
+
+/* =====================================================================
+   FAVORITAS (localStorage)
+   ===================================================================== */
+function routeId(r) {
+  const a = r.pts[0], b = r.pts[Math.floor(r.pts.length / 2)];
+  return [r.mode, r.kind, a[0].toFixed(4), a[1].toFixed(4), b[0].toFixed(4), b[1].toFixed(4), Math.round(r.a.total / 50)].join('|');
+}
+function isFav(r) { const id = routeId(r); return S.favs.some((f) => f.id === id); }
+
+function toggleFav(r) {
+  const id = routeId(r);
+  const idx = S.favs.findIndex((f) => f.id === id);
+  if (idx >= 0) {
+    S.favs.splice(idx, 1);
+    toast('Removida das favoritas', 1500);
+  } else {
+    const date = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    S.favs.unshift({
+      id, mode: r.mode, kind: r.kind, label: r.label || null,
+      name: `${r.mode === 'patinete' ? '🛴' : '🏃'} ${r.label || fmtKm(r.a.total)} · ${date}`,
+      // pontos e elevação já medidos: abre sem precisar de internet
+      pts: r.pts.map((p) => [+p[0].toFixed(5), +p[1].toFixed(5)]),
+      d: r.d.map((x) => Math.round(x)),
+      elev: r.elev.map((e) => Math.round(e * 10) / 10)
+    });
+    toast('Salva nas favoritas ⭐', 1500);
+  }
+  if (!store.set('favs', S.favs)) toast('Não deu pra salvar neste navegador', 2500);
+  updateFavCount();
+}
+
+function favToRoute(f) {
+  const r = buildRoute(f.pts, f.d, f.elev, f.kind);
+  r.mode = f.mode; r.label = f.label;
+  return r;
+}
+
+function updateFavCount() {
+  const b = $('#favCount');
+  b.textContent = S.favs.length;
+  b.classList.toggle('hidden', !S.favs.length);
+}
+
+function renderFavs() {
+  const box = $('#favList');
+  box.innerHTML = '';
+  if (!S.favs.length) {
+    box.innerHTML = '<div class="empty">Nenhuma rota salva ainda.<br>Toque na ☆ de uma rota.</div>';
+    return;
+  }
+  S.favs.forEach((f, i) => {
+    let r;
+    try { r = favToRoute(f); } catch { return; }
+    const v = verdict(r, r.mode);
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="rank lvl-${v.lvl}">${f.mode === 'patinete' ? '🛴' : '🏃'}</div>
+      <div class="cbody">
+        <div class="stats">${statsHtml(r)}</div>
+        <div class="verdict">${escapeHtml((f.label ? f.label + ' · ' : '') + v.txt + ' · ' + f.name.split(' · ').pop())}</div>
+      </div>
+      <button class="del" aria-label="Apagar">🗑</button>`;
+    el.addEventListener('click', () => {
+      setStart(r.pts[0][0], r.pts[0][1]);
+      showResults([r]);
+    });
+    el.querySelector('.del').addEventListener('click', (e) => {
+      e.stopPropagation();
+      S.favs.splice(i, 1);
+      store.set('favs', S.favs);
+      updateFavCount();
+      renderFavs();
+      setSheet(S.sheet);
+    });
+    box.appendChild(el);
+  });
+}
+
+/* =====================================================================
+   AÇÕES DOS BOTÕES
+   ===================================================================== */
+function setBusy(on, msg) {
+  S.busy = on;
+  const b = $('#btnSuggest');
+  b.disabled = on;
+  b.innerHTML = on ? '<span class="spinner"></span>&nbsp; Procurando…' : 'Sugerir rotas';
+  $('#btnBarigui').disabled = on;
+  if (on) toast(msg || 'Carregando…', 0, true); else hideToast();
+}
+
+async function run(task) {
+  if (S.busy) return;
+  try {
+    const routes = await task();
+    setBusy(false);
+    if (!routes || !routes.length) throw new Error('vazio');
+    showResults(routes);
+    if (routes.length < 3 && routes[0].kind === 'loop') toast('Achei poucas opções por aqui', 2200);
+  } catch (e) {
+    console.warn('[app]', e);
+    setBusy(false);
+    toast(navigator.onLine === false ? 'Sem internet. Tente de novo quando voltar.' : 'Não consegui achar rotas agora. Tente de novo.', 3500);
+  }
+}
+
+function initControls() {
+  // Modo
+  const paintMode = () => $$('#segMode button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === S.mode));
+  $$('#segMode button').forEach((b) => b.addEventListener('click', () => { S.mode = b.dataset.mode; store.set('mode', S.mode); paintMode(); }));
+  paintMode();
+  // Distância
+  const paintKm = () => $$('#segDist button').forEach((b) => b.setAttribute('aria-pressed', +b.dataset.km === S.km));
+  $$('#segDist button').forEach((b) => b.addEventListener('click', () => { S.km = +b.dataset.km; store.set('km', S.km); paintKm(); }));
+  paintKm();
+
+  $('#btnSuggest').addEventListener('click', () => run(suggestLoops));
+  $('#btnBarigui').addEventListener('click', () => run(suggestBarigui));
+
+  $('#btnBack').addEventListener('click', backToControls);
+  $('#btnFavBack').addEventListener('click', backToControls);
+  $('#btnPrev').addEventListener('click', () => select(S.sel - 1));
+  $('#btnNext').addEventListener('click', () => select(S.sel + 1));
+
+  $('#btnFavs').addEventListener('click', () => {
+    if (S.busy) return;
+    if (S.view === 'favs') { backToControls(); return; }
+    renderFavs();
+    clearRoutes();
+    showView('favs', 'full');
+  });
+
+  $('#btnLayer').addEventListener('click', () => {
+    S.layer = S.layer === 'satelite' ? 'ruas' : 'satelite';
+    store.set('layer', S.layer);
+    if (S.layer === 'satelite') { map.removeLayer(tileRuas); tileSat.addTo(map); }
+    else { map.removeLayer(tileSat); tileRuas.addTo(map); }
+    updateLayerBtn();
+  });
+
+  $('#btnTheme').addEventListener('click', () => {
+    applyTheme(S.theme === 'dark' ? 'light' : 'dark');
+    store.set('theme', S.theme);
+  });
+
+  $('#btnGps').addEventListener('click', locate);
+}
+
+function clearRoutes() {
+  S.routes = []; S.sel = -1;
+  routeLayer.clearLayers(); ghostLayer.clearLayers();
+  cursorMarker = null;
+}
+
+function backToControls() {
+  clearRoutes();
+  showView('controls', 'peek');
+}
+
+function applyTheme(t) {
+  S.theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  $('#btnTheme').textContent = t === 'dark' ? '☀️' : '🌙';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = t === 'dark' ? '#16191d' : '#1f8a4c';
+  if (map && S.routes.length) { drawRoutes(); }
+  drawProfile();
+}
+
+/* GPS: "Minha localização" */
+function locate() {
+  if (!('geolocation' in navigator)) { toast('Seu navegador não informa a localização'); return; }
+  toast('Buscando sua localização…', 0, true);
+  navigator.geolocation.getCurrentPosition((pos) => {
+    hideToast();
+    const { latitude: lat, longitude: lng } = pos.coords;
+    const ll = [lat, lng];
+    if (!meMarker) {
+      meMarker = L.marker(ll, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
+    } else meMarker.setLatLng(ll);
+    if (S.view === 'controls') {
+      setStart(lat, lng);
+      toast('Partida: sua localização 📍', 1800);
+    }
+    map.setView(ll, Math.max(map.getZoom(), 15));
+    if (dist(ll, [CFG.START.lat, CFG.START.lng]) > 30000) toast('Você está longe de Curitiba, mas dá pra usar', 2500);
+  }, (err) => {
+    toast(err && err.code === 1 ? 'Permita o acesso à localização nas configurações' : 'Não achei sua localização. Toque no mapa.', 3000);
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+/* =====================================================================
+   CARREGAMENTO DO LEAFLET (com CDNs reserva)
+   ===================================================================== */
+function loadTag(tag, attrs) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement(tag);
+    Object.assign(el, attrs);
+    el.onload = () => resolve();
+    el.onerror = () => { el.remove(); reject(new Error('falha ao carregar')); };
+    document.head.appendChild(el);
+  });
+}
+async function loadLeaflet() {
+  for (const src of CFG.LEAFLET) {
+    try { await loadTag('script', { src: src.js }); if (window.L) break; } catch { /* tenta o próximo */ }
+  }
+  if (!window.L) throw new Error('leaflet');
+  for (const src of CFG.LEAFLET) {
+    try { await loadTag('link', { rel: 'stylesheet', href: src.css }); return; } catch { /* próximo */ }
+  }
+}
+
+function showFatal() {
+  const d = document.createElement('div');
+  d.id = 'fatal';
+  d.innerHTML = '<div><p>Não deu pra abrir o mapa agora.<br>Confira a internet.</p><button class="btn-main" onclick="location.reload()">Tentar de novo</button></div>';
+  document.body.appendChild(d);
+}
+
+/* =====================================================================
+   INÍCIO
+   ===================================================================== */
+async function boot() {
+  // Preferências salvas
+  S.mode = store.get('mode', 'patinete') === 'corrida' ? 'corrida' : 'patinete';
+  S.km = [2, 3, 5, 8].includes(store.get('km', 3)) ? store.get('km', 3) : 3;
+  S.layer = store.get('layer', 'ruas') === 'satelite' ? 'satelite' : 'ruas';
+  const favs = store.get('favs', []);
+  S.favs = Array.isArray(favs) ? favs.filter((f) => f && Array.isArray(f.pts) && Array.isArray(f.elev)) : [];
+  const savedTheme = store.get('theme', null);
+  let prefersDark = false;
+  try { prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches; } catch { /* ignora */ }
+  applyTheme(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : (prefersDark ? 'dark' : 'light'));
+
+  try { await loadLeaflet(); } catch { showFatal(); return; }
+
+  initMap();
+  initControls();
+  initSheetDrag();
+  initProfileTouch();
+  updateFavCount();
+  showView('controls', 'peek');
+  setTimeout(() => { if (!S.busy) toast('Toque no mapa para escolher a partida', 2800); }, 600);
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
