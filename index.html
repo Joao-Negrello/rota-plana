@@ -134,8 +134,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   background: var(--fg); color: var(--bg);
   padding: 10px 16px; border-radius: 14px; font-size: 14.5px; text-align: center;
   box-shadow: var(--shadow); pointer-events: none;
+  opacity: 0; visibility: hidden; transition: transform .25s ease, opacity .2s, visibility .25s;
 }
-#toast.show { transform: translate(-50%, 0); }
+#toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; }
 .spinner {
   width: 16px; height: 16px; border-radius: 50%;
   border: 2.5px solid currentColor; border-right-color: transparent;
@@ -221,6 +222,76 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .del { flex: none; border: 0; background: none; font-size: 20px; width: 40px; height: 40px; color: var(--muted); }
 .empty { text-align: center; color: var(--muted); padding: 24px 8px; }
 
+/* Origem / destino */
+.brand { display: none; }
+.places { background: var(--card); border-radius: 14px; padding: 2px 4px; margin-bottom: 10px; }
+.place-row { display: flex; align-items: center; }
+.place-row + .place-row { border-top: 1px solid var(--line); }
+.place {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  border: 0; background: none; padding: 12px 10px; text-align: left;
+}
+.ptxt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.ptxt.muted { color: var(--muted); font-weight: 500; }
+.dot { flex: none; width: 12px; height: 12px; border-radius: 50%; }
+.dot-from { background: var(--accent); }
+.dot-to { background: var(--fg); border-radius: 3px; }
+.clear { flex: none; border: 0; background: none; width: 42px; height: 42px; color: var(--muted); font-size: 18px; }
+
+/* Tela de busca */
+#search {
+  position: fixed; inset: 0; z-index: 1500; background: var(--bg);
+  display: flex; flex-direction: column; padding-top: env(safe-area-inset-top);
+}
+.shead { display: flex; gap: 8px; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); }
+#searchInput {
+  flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 11px 14px;
+  border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); outline: none;
+}
+#searchInput:focus { border-color: var(--accent); }
+.slist { overflow-y: auto; padding: 6px 8px 24px; }
+.sitem {
+  display: flex; gap: 14px; align-items: center; width: 100%; text-align: left;
+  border: 0; background: none; padding: 11px 10px; border-radius: 12px;
+}
+.sitem:hover, .sitem:focus-visible { background: var(--card); outline: none; }
+.sico { flex: none; width: 24px; text-align: center; font-size: 19px; }
+.sitem b { display: block; font-weight: 600; }
+.sitem small { display: block; color: var(--muted); font-size: 13.5px; }
+.smsg { padding: 22px 12px; text-align: center; color: var(--muted); }
+
+/* Zoom só no computador (no celular usa os dedos) */
+.leaflet-control-zoom { display: none; }
+
+/* =========================================================
+   COMPUTADOR: painel vira barra lateral fixa à esquerda
+   ========================================================= */
+@media (min-width: 900px) {
+  #map { left: 400px; }
+  #sheet {
+    left: 0; right: auto; top: 0; bottom: 0; margin: 0;
+    width: 400px; max-width: none; max-height: none; height: 100%;
+    border-radius: 0; transform: none !important;
+    box-shadow: 2px 0 18px rgba(0,0,0,.14); border-right: 1px solid var(--line);
+  }
+  #grab { display: none; }
+  .brand {
+    display: block; flex: none; padding: 20px 20px 12px; font-size: 20px; font-weight: 800;
+  }
+  .brand small { display: block; font-size: 13.5px; font-weight: 500; color: var(--muted); }
+  .view { flex: 1; padding: 4px 20px 24px; }
+  #topLeft { left: 412px; }
+  #toast { left: calc(200px + 50vw); }
+  #search {
+    right: auto; width: 400px; border-right: 1px solid var(--line);
+    box-shadow: 2px 0 18px rgba(0,0,0,.14);
+  }
+  .leaflet-control-zoom { display: block; }
+  .leaflet-control-zoom a { background: var(--bg) !important; color: var(--fg) !important; border-color: var(--line) !important; }
+  .card:hover { border-color: var(--line); }
+  .card.sel:hover { border-color: var(--accent); }
+}
+
 /* Tela de falha geral (só se o mapa nem carregar) */
 #fatal {
   position: fixed; inset: 0; z-index: 2000; background: var(--bg);
@@ -260,8 +331,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 <section id="sheet" aria-label="Painel">
   <div id="grab" aria-hidden="true"></div>
 
-  <!-- VISTA 1: controles (máximo 3) -->
+  <!-- Título (aparece só no computador) -->
+  <div class="brand">🛴 Rota Plana <small>rotas com pouca subida</small></div>
+
+  <!-- VISTA 1: controles -->
   <div class="view" id="viewControls">
+    <!-- Origem e destino: tocar abre a busca -->
+    <div class="places">
+      <div class="place-row">
+        <button class="place" id="fieldFrom"><span class="dot dot-from"></span><span class="ptxt" id="fromTxt">Praça da Ucrânia</span></button>
+      </div>
+      <div class="place-row">
+        <button class="place" id="fieldTo"><span class="dot dot-to"></span><span class="ptxt muted" id="toTxt">Para onde? (opcional)</span></button>
+        <button class="clear hidden" id="btnClearTo" aria-label="Limpar destino">✕</button>
+      </div>
+    </div>
     <div class="seg" id="segMode">
       <button data-mode="patinete">🛴 Patinete</button>
       <button data-mode="corrida">🏃 Corrida</button>
@@ -301,6 +385,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
   </div>
 </section>
 
+<!-- Tela de busca (origem ou destino) -->
+<div id="search" class="hidden" role="dialog" aria-label="Buscar lugar">
+  <div class="shead">
+    <button class="icon-btn" id="btnSearchClose" aria-label="Fechar">←</button>
+    <input id="searchInput" type="search" placeholder="Para onde?" autocomplete="off" enterkeyhint="search">
+  </div>
+  <div id="searchList" class="slist"></div>
+</div>
+
 <script>
 /* =====================================================================
    ROTA PLANA — rotas com pouca subida no Bigorrilho e arredores
@@ -334,6 +427,12 @@ const CFG = {
            'https://router.project-osrm.org/route/v1/driving/']
   },
   ELEVATION: 'https://api.open-meteo.com/v1/elevation',
+  // Busca de endereços (gratuitas, sem chave). Photon tem sugestões ao digitar.
+  PHOTON: 'https://photon.komoot.io',
+  NOMINATIM: 'https://nominatim.openstreetmap.org',
+  // Região de Curitiba e entorno (oeste, sul, leste, norte) para priorizar resultados
+  BBOX: [-49.42, -25.65, -49.13, -25.33],
+  MAX_DEST_KM: 20,       // destino mais longe que isso é recusado
   OVERPASS: ['https://overpass-api.de/api/interpreter',
              'https://overpass.kumi.systems/api/interpreter'],
   LEAFLET: [
@@ -354,6 +453,9 @@ const S = {
   mode: 'patinete',      // 'patinete' | 'corrida'
   km: 3,                 // distância desejada
   start: { ...CFG.START },
+  startName: 'Praça da Ucrânia',
+  dest: null,            // {lat, lng, name, park?} ou null (= sugerir voltas)
+  pickTarget: null,      // 'from' | 'to' enquanto espera um toque no mapa
   routes: [],            // rotas exibidas na lista
   sel: -1,               // índice da rota selecionada
   view: 'controls',      // 'controls' | 'results' | 'favs'
@@ -657,7 +759,10 @@ function gradeColor(g) {
 
 /** Transforma geometria OSRM em rota analisada (amostra + elevação). */
 async function toRoute(coords, kind) {
-  const { pts, d } = resample(coords, CFG.SAMPLE_M);
+  // Rotas longas: amostra mais espaçada para não estourar a API de elevação
+  let len = 0;
+  for (let i = 1; i < coords.length; i++) len += dist(coords[i - 1], coords[i]);
+  const { pts, d } = resample(coords, Math.max(CFG.SAMPLE_M, len / 400));
   if (pts.length < 3) throw new Error('rota curta');
   const elev = await elevations(pts);
   return buildRoute(pts, d, elev, kind);
@@ -816,15 +921,33 @@ function lakeWaypoints(lake, entry) {
   return [entry, ...ordered, entry];
 }
 
-async function suggestBarigui() {
+/** Nome curto para o título ("Até Shopping Curitiba") */
+function shortName(n) { n = String(n || 'destino'); return n.length > 24 ? n.slice(0, 23) + '…' : n; }
+
+/**
+ * Rota mais plana da partida até um destino.
+ * dest.park = true → Parque Barigui (entra pelo lado mais próximo e oferece a volta no lago)
+ */
+async function suggestTo(dest) {
   const profile = S.mode === 'patinete' ? 'bike' : 'foot';
   const start = [S.start.lat, S.start.lng];
   setBusy(true, 'Procurando o caminho…');
-  const { park, lake } = await getParkData();
-  const entry = parkEntry(park, start);
-  if (dist(start, entry) < 150) {
-    toast('Você já está no parque 🌳');
+  let park = [], lake = null, entry = [dest.lat, dest.lng];
+  if (dest.park) {
+    ({ park, lake } = await getParkData());
+    entry = parkEntry(park, start);
   }
+  if (dist(start, entry) < 150) {
+    setBusy(false);
+    toast(dest.park ? 'Você já está no parque 🌳' : 'Você já está pertinho do destino');
+    return null;
+  }
+  if (dist(start, entry) > CFG.MAX_DEST_KM * 1000) {
+    setBusy(false);
+    toast('Destino muito longe. Escolha um lugar mais perto.', 3000);
+    return null;
+  }
+  const label = dest.park ? 'Até o Barigui' : 'Até ' + shortName(dest.name);
 
   // Alternativas: rota direta + desvios por pontos laterais
   const direct = dist(start, entry);
@@ -842,9 +965,10 @@ async function suggestBarigui() {
   setBusy(true, 'Medindo as subidas…');
   const list = (await pool(found, 2, (c) => toRoute(c.coords, 'dest'))).filter(Boolean);
   if (!list.length) throw new Error('sem elevação');
-  list.forEach((r) => { r.mode = S.mode; r.score = score(r, S.mode, 0); r.label = 'Até o Barigui'; });
+  list.forEach((r) => { r.mode = S.mode; r.score = score(r, S.mode, 0); r.label = label; });
   list.sort((a, b) => a.score - b.score);
   const top = list.slice(0, 4);
+  if (!dest.park) return top;
 
   // Volta no lago: calculada em seguida e adicionada como último cartão
   const arrival = top[0].pts[top[0].pts.length - 1];
@@ -872,7 +996,7 @@ async function lakeLoop(lake, arrival, profile) {
 /* =====================================================================
    MAPA (Leaflet)
    ===================================================================== */
-let map, tileRuas, tileSat, startMarker, meMarker, cursorMarker;
+let map, tileRuas, tileSat, startMarker, destMarker, meMarker, cursorMarker;
 let routeLayer, ghostLayer;
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 
@@ -923,22 +1047,89 @@ function initMap() {
   startMarker.on('dragend', () => {
     if (S.view !== 'controls') { startMarker.setLatLng([S.start.lat, S.start.lng]); toast('Volte (←) para mudar a partida'); return; }
     const p = startMarker.getLatLng();
-    S.start = { lat: p.lat, lng: p.lng };
-    toast('Partida definida aqui 📌', 1500);
+    setStart(p.lat, p.lng, 'Ponto no mapa');
+    nameFromMap(p.lat, p.lng, 'from');
   });
 
-  // Tocar no mapa define a partida (apenas na tela de controles)
+  // Marcador do destino (aparece quando há destino escolhido)
+  destMarker = L.marker([0, 0], {
+    draggable: true, zIndexOffset: 900,
+    icon: L.divIcon({ className: '', html: '<div class="pin pin-end"></div>', iconSize: [30, 30], iconAnchor: [15, 34] })
+  });
+  destMarker.on('dragend', () => {
+    const p = destMarker.getLatLng();
+    setDest({ lat: p.lat, lng: p.lng, name: 'Ponto no mapa' });
+    nameFromMap(p.lat, p.lng, 'to');
+  });
+
+  // Desktop: botões de zoom (escondidos no celular via CSS)
+  L.control.zoom({ position: 'bottomright', zoomInTitle: 'Aproximar', zoomOutTitle: 'Afastar' }).addTo(map);
+
+  // Tocar no mapa:
+  // - se o usuário pediu "Escolher no mapa", define origem/destino
+  // - senão, na tela de controles, define a partida
   map.on('click', (e) => {
     if (S.busy) return;
+    const { lat, lng } = e.latlng;
+    if (S.pickTarget) {
+      const t = S.pickTarget;
+      S.pickTarget = null;
+      hideToast();
+      if (t === 'from') setStart(lat, lng, 'Ponto no mapa');
+      else setDest({ lat, lng, name: 'Ponto no mapa' });
+      nameFromMap(lat, lng, t);
+      return;
+    }
     if (S.view !== 'controls') { if (S.sheet === 'full') setSheet('peek'); return; }
-    setStart(e.latlng.lat, e.latlng.lng);
+    setStart(lat, lng, 'Ponto no mapa');
+    nameFromMap(lat, lng, 'from');
     toast('Partida definida aqui 📌', 1500);
   });
 }
 
-function setStart(lat, lng) {
+/** Define a partida (posição + nome mostrado no campo "De"). */
+function setStart(lat, lng, name) {
   S.start = { lat, lng };
+  if (name) S.startName = name;
   startMarker.setLatLng([lat, lng]);
+  $('#fromTxt').textContent = S.startName;
+}
+
+/** Define (ou limpa, com null) o destino. Sem destino = sugerir voltas. */
+function setDest(p) {
+  S.dest = p;
+  const has = !!p;
+  $('#toTxt').textContent = has ? p.name : 'Para onde? (opcional)';
+  $('#toTxt').classList.toggle('muted', !has);
+  $('#btnClearTo').classList.toggle('hidden', !has);
+  $('#segDist').classList.toggle('hidden', has);           // distância só vale para voltas
+  if (!S.busy) $('#btnSuggest').textContent = has ? 'Traçar rota plana' : 'Sugerir rotas';
+  if (has) {
+    destMarker.setLatLng([p.lat, p.lng]);
+    if (!map.hasLayer(destMarker)) destMarker.addTo(map);
+    map.fitBounds(L.latLngBounds([[S.start.lat, S.start.lng], [p.lat, p.lng]]), {
+      paddingTopLeft: [60, 80], paddingBottomRight: [70, sheetVisibleHeight() + 30], maxZoom: 16
+    });
+  } else if (map.hasLayer(destMarker)) map.removeLayer(destMarker);
+  requestAnimationFrame(() => setSheet(S.sheet));
+}
+
+/** Busca o nome da rua do ponto tocado (melhor esforço; falha em silêncio). */
+async function nameFromMap(lat, lng, target) {
+  try {
+    const j = await fetchJSON(`${CFG.PHOTON}/reverse?lat=${lat.toFixed(6)}&lon=${lng.toFixed(6)}&limit=1`, { retries: 0, timeout: 6000 });
+    const f = j && j.features && j.features[0];
+    if (!f) return;
+    const pl = placeFromPhoton(f);
+    const name = pl.street || pl.name;
+    if (!name) return;
+    // só atualiza se o ponto ainda é o mesmo
+    if (target === 'from' && S.start.lat === lat && S.start.lng === lng) setStart(lat, lng, name);
+    if (target === 'to' && S.dest && S.dest.lat === lat && S.dest.lng === lng) {
+      S.dest.name = name;
+      $('#toTxt').textContent = name;
+    }
+  } catch (e) { console.warn('[app] nome do ponto', e); }
 }
 
 function updateLayerBtn() {
@@ -1078,6 +1269,10 @@ function drawProfile() {
     ctx.textAlign = k === 0 ? 'left' : 'center';
     ctx.fillText(k / 1000 + ' km', X(k), base + 3);
   }
+  if (total < 1500) {          // rota curta: mostra também o final ("0,7 km")
+    ctx.textAlign = 'right';
+    ctx.fillText(fmtKm(total), X(total), base + 3);
+  }
 
   // Cursor (dedo no gráfico)
   if (profileCursor >= 0 && profileCursor < r.pts.length) {
@@ -1104,7 +1299,7 @@ function initProfileTouch() {
     $('#rHint').textContent = `km ${fmt1(r.d[i] / 1000)} · ${Math.round(r.s[i])} m · ${g >= 0 ? 'sobe' : 'desce'} ${Math.abs(Math.round(g))}%`;
   };
   cv.addEventListener('pointerdown', (e) => { cv.setPointerCapture(e.pointerId); pick(e); });
-  cv.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') pick(e); });
+  cv.addEventListener('pointermove', pick);   // dedo arrastando ou mouse passando
 }
 
 /* =====================================================================
@@ -1121,10 +1316,18 @@ function peekHeight() {
   const grab = $('#grab').offsetHeight;
   return grab + (end ? end.offsetTop - v.offsetTop + 12 : v.scrollHeight) + (parseFloat(getComputedStyle(sheet).paddingBottom) || 0);
 }
-function sheetVisibleHeight() { return S.sheet === 'full' ? sheet.offsetHeight : Math.min(sheet.offsetHeight, peekHeight()); }
+/** Tela larga (computador): o painel vira barra lateral fixa. */
+const isDesktop = () => { try { return window.matchMedia('(min-width: 900px)').matches; } catch { return false; } };
+
+/** Quanto do mapa o painel cobre por baixo (0 no computador, onde fica ao lado). */
+function sheetVisibleHeight() {
+  if (isDesktop()) return 0;
+  return S.sheet === 'full' ? sheet.offsetHeight : Math.min(sheet.offsetHeight, peekHeight());
+}
 
 function setSheet(state) {
   S.sheet = state;
+  if (isDesktop()) { sheet.style.setProperty('--ty', '0px'); return; }
   const ty = state === 'full' ? 0 : Math.max(0, sheet.offsetHeight - peekHeight());
   sheet.style.setProperty('--ty', ty + 'px');
   if (state === 'peek') currentView().scrollTop = 0;
@@ -1156,7 +1359,11 @@ function initSheetDrag() {
   grab.addEventListener('pointermove', move);
   grab.addEventListener('pointerup', up);
   grab.addEventListener('pointercancel', up);
-  window.addEventListener('resize', () => { setSheet(S.sheet); drawProfile(); });
+  window.addEventListener('resize', () => {
+    setSheet(S.sheet); drawProfile();
+    if (map) map.invalidateSize();
+    if (S.view === 'results' && S.routes.length) renderHeader();
+  });
   // Conteúdo mudou de tamanho (cartões entraram/saíram): reposiciona o painel
   if ('ResizeObserver' in window) {
     let raf = 0;
@@ -1172,6 +1379,8 @@ function showView(v, sheetState = 'peek') {
   S.view = v;
   ['controls', 'results', 'favs'].forEach((n) => $('#view' + n[0].toUpperCase() + n.slice(1)).classList.toggle('hidden', n !== v));
   startMarker.dragging && (v === 'controls' ? startMarker.dragging.enable() : startMarker.dragging.disable());
+  // nos resultados a rota já mostra a chegada; o pino de destino some
+  if (destMarker) destMarker.setOpacity(v === 'controls' ? 1 : 0);
   requestAnimationFrame(() => setSheet(sheetState));
 }
 
@@ -1197,7 +1406,9 @@ function renderHeader() {
   $('#btnNext').disabled = S.sel >= S.routes.length - 1;
   $('#btnPrev').classList.toggle('hidden', S.routes.length < 2);
   $('#btnNext').classList.toggle('hidden', S.routes.length < 2);
-  $('#rHint').textContent = S.routes.length > 1 ? `↑ puxe para ver as ${S.routes.length} opções` : 'Toque no gráfico para ver o ponto no mapa';
+  $('#rHint').textContent = isDesktop()
+    ? 'Passe o mouse no gráfico para ver o ponto no mapa'
+    : (S.routes.length > 1 ? `↑ puxe para ver as ${S.routes.length} opções` : 'Toque no gráfico para ver o ponto no mapa');
 }
 
 function renderCards() {
@@ -1325,7 +1536,7 @@ function setBusy(on, msg) {
   S.busy = on;
   const b = $('#btnSuggest');
   b.disabled = on;
-  b.innerHTML = on ? '<span class="spinner"></span>&nbsp; Procurando…' : 'Sugerir rotas';
+  b.innerHTML = on ? '<span class="spinner"></span>&nbsp; Procurando…' : (S.dest ? 'Traçar rota plana' : 'Sugerir rotas');
   $('#btnBarigui').disabled = on;
   if (on) toast(msg || 'Carregando…', 0, true); else hideToast();
 }
@@ -1334,8 +1545,9 @@ async function run(task) {
   if (S.busy) return;
   try {
     const routes = await task();
+    if (routes === null) return;          // a tarefa já avisou o motivo (ex.: destino longe)
     setBusy(false);
-    if (!routes || !routes.length) throw new Error('vazio');
+    if (!routes.length) throw new Error('vazio');
     showResults(routes);
     if (routes.length < 3 && routes[0].kind === 'loop') toast('Achei poucas opções por aqui', 2200);
   } catch (e) {
@@ -1355,8 +1567,19 @@ function initControls() {
   $$('#segDist button').forEach((b) => b.addEventListener('click', () => { S.km = +b.dataset.km; store.set('km', S.km); paintKm(); }));
   paintKm();
 
-  $('#btnSuggest').addEventListener('click', () => run(suggestLoops));
-  $('#btnBarigui').addEventListener('click', () => run(suggestBarigui));
+  // Com destino: rota até lá. Sem destino: voltas (saída e chegada no mesmo ponto).
+  $('#btnSuggest').addEventListener('click', () => run(S.dest ? () => suggestTo(S.dest) : suggestLoops));
+  $('#btnBarigui').addEventListener('click', () => {
+    if (S.busy) return;
+    setDest({ ...BARIGUI_PLACE });
+    run(() => suggestTo(S.dest));
+  });
+
+  // Origem / destino
+  $('#fieldFrom').addEventListener('click', () => openSearch('from'));
+  $('#fieldTo').addEventListener('click', () => openSearch('to'));
+  $('#btnClearTo').addEventListener('click', () => setDest(null));
+  initSearch();
 
   $('#btnBack').addEventListener('click', backToControls);
   $('#btnFavBack').addEventListener('click', backToControls);
@@ -1408,6 +1631,146 @@ function applyTheme(t) {
   drawProfile();
 }
 
+/* =====================================================================
+   BUSCA DE ENDEREÇOS (origem e destino)
+   Photon (sugestões enquanto digita) e Nominatim como reserva.
+   ===================================================================== */
+const BARIGUI_PLACE = { lat: CFG.BARIGUI.lat, lng: CFG.BARIGUI.lng, name: 'Parque Barigui', detail: 'Bigorrilho / Mercês', park: true };
+let searchTarget = 'to';
+let searchTimer = null;
+let searchSeq = 0;           // descarta respostas atrasadas de buscas antigas
+
+/** Converte um resultado do Photon em {name, detail, street, lat, lng}. */
+function placeFromPhoton(f) {
+  const p = f.properties || {};
+  const [lng, lat] = f.geometry.coordinates;
+  const street = p.street ? p.street + (p.housenumber ? ', ' + p.housenumber : '') : '';
+  const name = p.name || street || p.district || p.city || 'Lugar';
+  const detail = [p.name ? street : '', p.district || p.locality, p.city].filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i).join(' · ');
+  return { name, detail, street, lat, lng };
+}
+
+async function geocode(q) {
+  const near = `&lat=${S.start.lat.toFixed(4)}&lon=${S.start.lng.toFixed(4)}`;
+  const enc = encodeURIComponent(q);
+  try {
+    // 1) Curitiba e região primeiro
+    let j = await fetchJSON(`${CFG.PHOTON}/api/?q=${enc}&limit=8&bbox=${CFG.BBOX.join(',')}${near}`, { retries: 1, timeout: 8000 });
+    let list = (j.features || []).map(placeFromPhoton);
+    // 2) nada na região? busca geral, ainda priorizando perto da partida
+    if (!list.length) {
+      j = await fetchJSON(`${CFG.PHOTON}/api/?q=${enc}&limit=8${near}`, { retries: 1, timeout: 8000 });
+      list = (j.features || []).map(placeFromPhoton);
+    }
+    return list;
+  } catch (e) {
+    console.warn('[app] photon', e);
+  }
+  // 3) reserva: Nominatim
+  const b = CFG.BBOX;
+  const j = await fetchJSON(`${CFG.NOMINATIM}/search?format=jsonv2&limit=8&countrycodes=br&accept-language=pt-BR&viewbox=${b[0]},${b[3]},${b[2]},${b[1]}&q=${enc}`, { retries: 1, timeout: 10000 });
+  return (j || []).map((x) => {
+    const parts = String(x.display_name || '').split(',').map((t) => t.trim());
+    return { name: x.name || parts[0], detail: parts.slice(1, 3).join(' · '), lat: +x.lat, lng: +x.lon };
+  });
+}
+
+function openSearch(target) {
+  if (S.busy) return;
+  searchTarget = target;
+  S.pickTarget = null;
+  const inp = $('#searchInput');
+  inp.value = '';
+  inp.placeholder = target === 'from' ? 'De onde você sai?' : 'Para onde?';
+  $('#search').classList.remove('hidden');
+  renderQuick();
+  setTimeout(() => inp.focus(), 60);
+}
+function closeSearch() {
+  $('#search').classList.add('hidden');
+  $('#searchInput').blur();
+}
+
+/** Lista de itens clicáveis na tela de busca. */
+function renderSearchItems(items) {
+  const box = $('#searchList');
+  box.innerHTML = '';
+  items.forEach((it) => {
+    const b = document.createElement('button');
+    b.className = 'sitem';
+    b.innerHTML = `<span class="sico">${it.ico}</span><span><b>${escapeHtml(it.name)}</b>${it.detail ? `<small>${escapeHtml(it.detail)}</small>` : ''}</span>`;
+    b.addEventListener('click', it.act);
+    box.appendChild(b);
+  });
+}
+function searchMsg(txt) { $('#searchList').innerHTML = `<div class="smsg">${escapeHtml(txt)}</div>`; }
+
+/** Atalhos mostrados antes de digitar: GPS, escolher no mapa, Barigui, recentes. */
+function renderQuick() {
+  const items = [];
+  if (searchTarget === 'from') items.push({ ico: '📍', name: 'Minha localização', act: () => { closeSearch(); locate(); } });
+  items.push({
+    ico: '🗺️', name: 'Escolher no mapa', act: () => {
+      closeSearch();
+      S.pickTarget = searchTarget;
+      setSheet('peek');
+      toast(searchTarget === 'from' ? 'Toque no mapa para escolher a partida' : 'Toque no mapa para escolher o destino', 0);
+    }
+  });
+  if (searchTarget === 'to') items.push({ ico: '🌳', name: BARIGUI_PLACE.name, detail: BARIGUI_PLACE.detail, act: () => choosePlace(BARIGUI_PLACE) });
+  store.get('recent', []).forEach((p) => {
+    if (p && typeof p.lat === 'number') items.push({ ico: '🕘', name: p.name, detail: p.detail, act: () => choosePlace(p) });
+  });
+  renderSearchItems(items);
+}
+
+async function doSearch(q) {
+  const seq = ++searchSeq;
+  searchMsg('Buscando…');
+  try {
+    const list = await geocode(q);
+    if (seq !== searchSeq) return;
+    if (!list.length) { searchMsg('Nada encontrado. Tente incluir o bairro.'); return; }
+    renderSearchItems(list.map((p) => ({ ico: '📌', name: p.name, detail: p.detail, act: () => choosePlace(p) })));
+  } catch (e) {
+    console.warn('[app] busca', e);
+    if (seq === searchSeq) searchMsg('Busca indisponível agora. Tente de novo.');
+  }
+}
+
+function choosePlace(p) {
+  closeSearch();
+  const place = { lat: p.lat, lng: p.lng, name: p.name, detail: p.detail || '', park: !!p.park };
+  // guarda nas recentes (máx. 5, sem repetir)
+  if (!place.park) {
+    const rec = store.get('recent', []).filter((r) => r && r.name !== place.name);
+    rec.unshift(place);
+    store.set('recent', rec.slice(0, 5));
+  }
+  if (searchTarget === 'from') {
+    setStart(place.lat, place.lng, place.name);
+    if (S.dest) setDest(S.dest); else map.setView([place.lat, place.lng], Math.max(map.getZoom(), 15));
+  } else {
+    setDest(place);
+  }
+}
+
+function initSearch() {
+  const inp = $('#searchInput');
+  inp.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = inp.value.trim();
+    if (q.length < 3) { searchSeq++; renderQuick(); return; }
+    searchTimer = setTimeout(() => doSearch(q), 400);   // espera parar de digitar
+  });
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { clearTimeout(searchTimer); const q = inp.value.trim(); if (q.length >= 2) doSearch(q); }
+    if (e.key === 'Escape') closeSearch();
+  });
+  $('#btnSearchClose').addEventListener('click', closeSearch);
+}
+
 /* GPS: "Minha localização" */
 function locate() {
   if (!('geolocation' in navigator)) { toast('Seu navegador não informa a localização'); return; }
@@ -1420,7 +1783,7 @@ function locate() {
       meMarker = L.marker(ll, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }) }).addTo(map);
     } else meMarker.setLatLng(ll);
     if (S.view === 'controls') {
-      setStart(lat, lng);
+      setStart(lat, lng, 'Minha localização');
       toast('Partida: sua localização 📍', 1800);
     }
     map.setView(ll, Math.max(map.getZoom(), 15));
